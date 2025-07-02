@@ -1,0 +1,2 @@
+# encryption key of the zfs-pool, ignored in git to prevent accidental committing
+naspool.key
