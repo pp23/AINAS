@@ -12,6 +12,55 @@ This project builds a NAS with AI capabilities to classify automatically stored 
 * 1x [Samsung NVME 990 Pro 4TB](https://www.reichelt.de/de/de/shop/produkt/samsung_ssd_990_pro_4tb_m_2_nvme-384306) (3x remaining slots will get filled if the budget is available ;-) )
 * [LAN cable is a CAT.6A](https://www.reichelt.de/de/de/shop/produkt/patchkabel_cat_6a_blau_0_25_m-198830) with up to 10GBps in theory
 
+### Updating Samsung 990 Pro Firmware (not working yet, but should with VFIO Kernel module)
+
+* Login into your NAS
+* Download the latest firmware update iso from [Samsung Storage Firmware](https://semiconductor.samsung.com/consumer-storage/support/tools/)
+  ```
+  wget https://download.semiconductor.samsung.com/resources/software-resources/Samsung_SSD_990_PRO_7B2QJXD7.iso
+  ```
+* Mount the iso-image:
+  ```
+  sudo mkdir -p /mnt/iso
+  sudo mount -o loop ./Samsung_SSD_990_PRO_7B2QJXD7.iso /mnt/iso
+  ```
+* Run the update image in a x86 virtual machine:
+  ```
+  qemu-system-x86_64 -kernel /mnt/iso/bzImage \
+                     -initrd /mnt/iso/initrd \
+                     -drive file=disk.img,format=raw,if=virtio \
+                     -m 2G \
+                     -nographic \
+                     -append "root=/dev/vda rw console=ttyS0,115200 earlyprintk=serial earlycon"
+  ```
+  * this should show the kernel boot logs and ends in Samsungs fumagician cli nvme update tool
+  * because no NVME is available in the VM, the tool does not find any NVME
+* Make the NVME available in the VM (in theory, not tested yet due to missing VFIO kernel module)
+  ```
+  # unbind the nvme:
+  lspci -nn | grep -i nvme
+  # outputs: 0003:31:00.0
+  # use the pci address in the unbind command:
+  echo 0003:31:00.0 | sudo tee /sys/bus/pci/devices/0003\:31\:00.0/driver/unbind
+  ```
+* Bind it to the VFIO driver (works only, if IOMMU is supported!)
+  ```
+  sudo modprobe vfio
+  sudo modprobe vfio-pci
+  # bind the device:
+  echo 144d a808 | sudo tee /sys/bus/pci/drivers/vfio-pci/new_id
+  # Use your device’s vendor & device ID (from lspci -nn).
+  # Check binding:
+  lspci -k -s 0003:31:00.0
+  # should show: Kernel driver in use: vfio-pci
+  ```
+* Add the NVMe to QEMU:
+  ```
+  qemu-system-x86_64
+  [...]
+   -device vfio-pci,host=0000:03:00.0,multifunction=on
+  ```
+
 ## Software
 
 * [OpenMediaVault with Linux version 6.1.99 from FriendlyElec](https://download.friendlyelec.com/CM3588)
